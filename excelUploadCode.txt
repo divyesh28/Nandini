@@ -1,0 +1,201 @@
+onUpload: function(oEvent,tabHeaders){
+			that = this;
+			var btnClicked =  oEvent.mParameters.id;
+			var fileUploader = sap.ui.getCore().byId(btnClicked);
+			var fileName = fileUploader.getValue();
+
+			this.oId = btnClicked;
+			this.tabHeaders = tabHeaders;
+			this.oEvent = oEvent;
+			this.fileUploader = fileUploader;
+			this.fileName = fileName;
+
+			var fileExtension = fileName.split('.')[fileName.split('.').length - 1];
+			var flag = null;
+
+			var errorm  = sap.ui.getCore().getModel("i18n").getProperty("MESSAGEBOX.ERROR");
+			var Upload1 = sap.ui.getCore().getModel("i18n").getProperty("Upload1");
+			var Upload2 = sap.ui.getCore().getModel("i18n").getProperty("Upload2");
+			var Upload3 = sap.ui.getCore().getModel("i18n").getProperty("Upload3");
+			var caution = sap.ui.getCore().getModel("i18n").getProperty("caution");
+			var warning = sap.ui.getCore().getModel("i18n").getProperty("warning");
+
+			var nofile  = sap.ui.getCore().getModel("i18n").getProperty("nofile");
+
+			if (fileExtension == "xls" || fileExtension == "XLS"
+				|| fileExtension == "XLSX"
+					|| fileExtension == "xlsx")
+			{
+				flag = 1;
+			}
+			else if (fileName == "")
+			{
+				flag = 2;
+			}
+			else
+			{
+				flag = 0;
+			}
+
+			var fileext = sap.ui.getCore().getModel("i18n").getProperty("fileextalert");
+			var isPopupOpen = "";
+			if(this.getView().getModel("FileAttachments"))
+			{
+				var docCategory = "EXC1";
+				var filterExcelAttach = this.getView().getModel("FileAttachments").oData.results.filter(function (entry) {
+					return entry.DocumentCategory ===  docCategory;
+				});		
+
+				if(filterExcelAttach.length > 0)
+					isPopupOpen = "X";
+			}
+
+			if(flag == 1)
+			{
+				sap.ui.getCore().byId(btnClicked).setValueState(sap.ui.core.ValueState.None);
+
+				if(isPopupOpen == "X"){
+					if (!this.oDeleteDialog) {
+
+						this.oDeleteDialog = sap.ui.xmlfragment("sap.umc.mobile.forms.view.forms.COMM.fragments.V00000.TableFragments.DeleteMsgDialog", this);
+						this.getView().addDependent(this.oDeleteDialog);
+					}
+					sap.ui.getCore().byId("LTRNStatusMessage").setText(Upload1);
+
+					sap.ui.getCore().byId("deleteTitle").setText(sap.ui.getCore().getModel("i18n").getProperty("INVOICE.CONFIRMATION"));
+					this.oDeleteDialog.open();
+				}
+				else{
+					that.readFileGen(fileName, fileUploader,oEvent,btnClicked,tabHeaders);
+				}
+
+
+				/*sap.m.MessageBox.confirm(Upload1,onConfirm,caution);
+				function onConfirm(oEvent) {
+					if(arguments[0] == "OK") {
+						that.readFileGen(fileName, fileUploader,oEvent,btnClicked,tabHeaders);
+					}
+					else {
+						return;
+					}
+				}*/
+			}
+			else if(flag == 2)
+			{
+				sap.m.MessageBox.show(Upload2, {
+					icon: sap.m.MessageBox.Icon.WARNING,
+					title: warning	
+				});
+			}
+			else
+			{
+				sap.m.MessageBox.show(fileext, {
+					icon: sap.m.MessageBox.Icon.ERROR,
+					title: sap.ui.getCore().getModel("i18n").getProperty("MESSAGEBOX.ERROR")
+				});
+			}
+		},
+
+		readFileGen : function(fileName,fileUploader,oEvent,btnClicked,tabHeaders){
+			var domRef = fileUploader.getFocusDomRef();
+			var oController = that.getView().getController();
+			var filePath = domRef.files[0];
+			var contentReader = new FileReader();
+			var arrayOfSheet = [];
+			var k = 0;
+			contentReader.onload = function(oEvent) {
+				var data = oEvent.target.result;
+				var workbook = XLSX.read(data, {
+					type : 'binary'			
+				});
+				var len = workbook.SheetNames.length;
+
+				var headers = [];
+				var sheet = workbook.Sheets[workbook.SheetNames[k]];
+				var range = XLSX.utils.decode_range(sheet['!ref']);
+				var C, R = range.s.r;
+				for (C = range.s.c; C <= range.e.c; ++C) {
+					var cell = sheet[XLSX.utils.encode_cell({c: C, r: R})];
+					var hdr = "";
+					if (cell && cell.t) {
+						hdr = XLSX.utils.format_cell(cell);
+					}
+					headers.push(hdr);
+				}
+				var roa = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[k]]);
+				var arrayOfJSON1 = XLSX.utils.sheet_to_row_object_array(workbook.Sheets[workbook.SheetNames[k]]);
+				var headersLength = headers.length;
+				for(var i = 0; i < headersLength; i++)
+				{
+					if(headers[i] == "")
+					{
+						headers.splice(i,1);
+						i = i - 1;
+						headersLength = headersLength - 1;
+					}
+				}
+				var arrayOfJSON = [];
+				if (arrayOfJSON1.length > 0) {
+					arrayOfJSON1.forEach(function (row) {
+						headers.forEach(function (hd) {
+							if (row[hd] == undefined) {
+								row[hd] = '';
+							}
+						});
+						arrayOfJSON.push(row);
+					});
+				}
+				var flag = that.validationOfDataXLSX(headers,tabHeaders);
+				if(flag == 0)
+				{
+					that.setXLSData(arrayOfJSON,headers);
+				}
+				else
+				{
+					sap.ui.core.BusyIndicator.hide();
+					var Upload4 = sap.ui.getCore().getModel("i18n").getProperty("Upload4")
+					//oController.displayMessageDialog(sap.umc.mobile.private.app.Constants.MESSAGE_ERROR,Upload4);
+					that.showErrorMessagePopup(Upload4);
+				}
+				k = 0;
+			}
+			contentReader.readAsBinaryString(filePath);	
+		},
+
+		validationOfDataXLSX : function(headers,tabHeaders)
+		{
+			var validFlag = 0;		
+			for(var i = 0; i < headers.length; i++)
+			{
+				if(tabHeaders[i])
+					if(headers[i].toLowerCase().replace(/\s/g,'') != tabHeaders[i].toLowerCase().replace(/\s/g,''))
+						validFlag++
+			}
+			return validFlag;
+		},
+
+		handleValidateXLS : function(){
+			this.ContinueFg = '';
+			this.XLSFlg = 'X';
+			var oController = this.getView().getController();
+			this.setPropertyInModel('/A_00_STEP','03','INST');
+			oController.handleValidatePress();
+		},
+
+		setXLSData : function(arrayOfJSON,headers)
+		{
+			this.FilterFlag = "";
+			var oController = this.getView().getController();
+			var arr = [];
+			var tableData = [];
+			arrayOfJSON.forEach(function(item,index){
+				headers.forEach(function (hd) {
+					arr.push(item[hd])
+				});				
+				tableData.push(arr);
+				arr = [];
+			});
+			//this.oDelegate.setFormModelForSchedule(this.tableId);
+			this.oDelegate.setXLSData(tableData,this.tableId);
+		},
+
